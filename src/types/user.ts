@@ -26,6 +26,10 @@ export interface User {
   badges: Badge[];
   /** Array of current weekly missions/challenges */
   weeklyMissions: Mission[];
+  /** Target role (optional) */
+  targetRole?: string;
+  /** Configuration status (optional) */
+  configCompleted?: boolean;
 }
 
 /**

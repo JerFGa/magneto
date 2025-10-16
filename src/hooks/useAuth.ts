@@ -12,6 +12,7 @@ import { User } from '../types/user';
  * @returns {Function} register - Function to register new user
  * @returns {Function} logout - Function to logout current user
  * @returns {Function} updateUser - Function to update user data
+ * @returns {Function} saveConfig - Function to save user configuration
  */
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -104,12 +105,59 @@ export function useAuth() {
     setUser(updatedUser);
   };
 
+  const saveConfig = async (workExperience: string, targetSector: string, targetRole: string) => {
+    if (!user) {
+      alert('No hay usuario autenticado');
+      return false;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/user/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: user.email,
+          workExperience, 
+          targetSector, 
+          targetRole 
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.message || 'Error al guardar configuración');
+        return false;
+      }
+
+      const data = await res.json();
+      
+      // Actualizar usuario con la nueva configuración
+      const updatedUser = {
+        ...user,
+        workExperience,
+        targetSector,
+        targetRole,
+        configCompleted: true,
+      };
+      
+      localStorage.setItem('jobsy-user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      
+      alert('Configuración guardada exitosamente');
+      return true;
+    } catch {
+      alert('No se pudo conectar con el servidor.');
+      return false;
+    }
+  };
+
   return {
     user,
     isLoading,
     login,
     register,
     logout,
-    updateUser
+    updateUser,
+    saveConfig
   };
 }
