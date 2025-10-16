@@ -1,6 +1,20 @@
 import { useState, useEffect } from 'react';
 import { User } from '../types/user';
 
+// URL del backend y defaults para evitar undefined.map en el dashboard
+const API_URL = 'http://localhost:3001';
+
+const DEFAULT_USER_FIELDS = {
+  badges: [],
+  weeklyMissions: [],
+  experience: 0,
+  level: 1,
+  streak: 0,
+  applicationsCount: 0,
+  interviewsCount: 0,
+  offersCount: 0
+};
+
 /**
  * Custom hook for managing user authentication and state
  * Handles login, registration, logout, and user data persistence using localStorage
@@ -12,7 +26,6 @@ import { User } from '../types/user';
  * @returns {Function} register - Function to register new user
  * @returns {Function} logout - Function to logout current user
  * @returns {Function} updateUser - Function to update user data
- * @returns {Function} saveConfig - Function to save user configuration
  */
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -40,20 +53,42 @@ export function useAuth() {
    * @returns {Promise<User>} Promise that resolves to the authenticated user
    */
   const login = async (email: string, password: string) => {
-    // Mock login - in real app would authenticate with backend
-    const mockUser: User = {
-      id: '1',
-      fullName: 'Usuario Demo',
-      email,
-      level: 1,
-      totalXP: 0,
-      badges: [],
-      weeklyMissions: []
-    };
-    
-    localStorage.setItem('jobsy-user', JSON.stringify(mockUser));
-    setUser(mockUser);
-    return mockUser;
+    try {
+      console.log('Intentando conectar con:', `${API_URL}/api/login`);
+      
+      const res = await fetch(`${API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      console.log('Respuesta del servidor:', res.status);
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ message: 'Error al iniciar sesión' }));
+        alert(data.message);
+        return null;
+      }
+      
+      const data = await res.json();
+      console.log('Usuario recibido:', data);
+      
+      const normalized = {
+        ...DEFAULT_USER_FIELDS,
+        ...data.user,
+        id: String(data.user?.id),
+        badges: data.user?.badges ?? DEFAULT_USER_FIELDS.badges,
+        weeklyMissions: data.user?.weeklyMissions ?? DEFAULT_USER_FIELDS.weeklyMissions,
+      } as User;
+      
+      localStorage.setItem('jobsy-user', JSON.stringify(normalized));
+      setUser(normalized);
+      return normalized;
+    } catch (error) {
+      console.error('Error de conexión:', error);
+      alert('No se pudo conectar con el servidor. Verifica que esté corriendo en http://localhost:3001');
+      return null;
+    }
   };
 
   /**
@@ -67,19 +102,35 @@ export function useAuth() {
    * @returns {Promise<User>} Promise that resolves to the newly created user
    */
   const register = async (fullName: string, email: string, password: string) => {
-    const newUser: User = {
-      id: Date.now().toString(),
-      fullName,
-      email,
-      level: 1,
-      totalXP: 0,
-      badges: [],
-      weeklyMissions: []
-    };
-    
-    localStorage.setItem('jobsy-user', JSON.stringify(newUser));
-    setUser(newUser);
-    return newUser;
+    try {
+      const res = await fetch(`${API_URL}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName, email, password }),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ message: 'Error al registrar' }));
+        alert(data.message);
+        return null;
+      }
+      
+      const data = await res.json();
+      const normalized = {
+        ...DEFAULT_USER_FIELDS,
+        ...data.user,
+        id: String(data.user?.id),
+        badges: data.user?.badges ?? DEFAULT_USER_FIELDS.badges,
+        weeklyMissions: data.user?.weeklyMissions ?? DEFAULT_USER_FIELDS.weeklyMissions,
+      } as User;
+      
+      localStorage.setItem('jobsy-user', JSON.stringify(normalized));
+      setUser(normalized);
+      return normalized;
+    } catch {
+      alert('No se pudo conectar con el servidor. Verifica que esté corriendo en http://localhost:3001');
+      return null;
+    }
   };
 
   /**
@@ -105,59 +156,12 @@ export function useAuth() {
     setUser(updatedUser);
   };
 
-  const saveConfig = async (workExperience: string, targetSector: string, targetRole: string) => {
-    if (!user) {
-      alert('No hay usuario autenticado');
-      return false;
-    }
-
-    try {
-      const res = await fetch(`${API_URL}/api/user/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: user.email,
-          workExperience, 
-          targetSector, 
-          targetRole 
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        alert(data?.message || 'Error al guardar configuración');
-        return false;
-      }
-
-      const data = await res.json();
-      
-      // Actualizar usuario con la nueva configuración
-      const updatedUser = {
-        ...user,
-        workExperience,
-        targetSector,
-        targetRole,
-        configCompleted: true,
-      };
-      
-      localStorage.setItem('jobsy-user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      
-      alert('Configuración guardada exitosamente');
-      return true;
-    } catch {
-      alert('No se pudo conectar con el servidor.');
-      return false;
-    }
-  };
-
   return {
     user,
     isLoading,
     login,
     register,
     logout,
-    updateUser,
-    saveConfig
+    updateUser
   };
 }
