@@ -1,20 +1,38 @@
-import express from 'express';
-import cors from 'cors';
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+require('dotenv').config();
 
 const app = express();
 const PORT = 3001;
 
+// Usa la variable de entorno para la contraseña
+const MONGO_URI = `mongodb+srv://admin:${process.env.DB_PASSWORD}@cluster0.oegtrdy.mongodb.net/jobsy?retryWrites=true&w=majority`;
+
 app.use(cors());
 app.use(express.json());
 
-// Middleware para log de requests
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
-  next();
-});
+// Conexión a MongoDB Atlas
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log('✅ Conectado a MongoDB'))
+  .catch(err => console.error('❌ Error de conexión a MongoDB:', err));
 
-// Mock user database
-const users = [];
+// Esquema y modelo de usuario
+const userSchema = new mongoose.Schema({
+  fullName: String,
+  email: { type: String, unique: true },
+  password: String,
+  level: { type: Number, default: 1 },
+  totalXP: { type: Number, default: 0 },
+  badges: { type: Array, default: [] },
+  weeklyMissions: { type: Array, default: [] },
+  workExperience: String,
+  targetSector: String,
+  targetRole: String,
+  configCompleted: { type: Boolean, default: false }
+});
+const User = mongoose.model('User', userSchema);
 
 // Ping endpoint
 app.get('/api/ping', (req, res) => {
@@ -22,54 +40,66 @@ app.get('/api/ping', (req, res) => {
 });
 
 // Register endpoint
-app.post('/api/register', (req, res) => {
+app.post('/api/register', async (req, res) => {
   const { fullName, email, password } = req.body;
-  if (users.find(u => u.email === email)) {
-    return res.status(400).json({ message: 'El usuario ya existe', user: null });
+  if (!fullName || !email || !password) {
+    return res.status(400).json({ message: 'Todos los campos son requeridos', user: null });
   }
-  const user = { 
-    id: users.length + 1, 
-    fullName, 
-    email, 
-    password,
-    level: 1,
-    totalXP: 0,
-    badges: [],
-    weeklyMissions: []
-  };
-  users.push(user);
-  res.status(201).json({ message: 'Registro realizado con éxito', user });
+  try {
+    const exists = await User.findOne({ email });
+    if (exists) {
+      return res.status(400).json({ message: 'El correo ya está registrado. Por favor usa otro.', user: null });
+    }
+    const user = await User.create({ fullName, email, password });
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.status(201).json({ message: 'Registro realizado con éxito', user: userObj });
+  } catch (err) {
+    res.status(500).json({ message: 'Error en el servidor', user: null });
+  }
 });
 
 // Login endpoint
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
-  const user = users.find(u => u.email === email && u.password === password);
-  if (!user) {
-    return res.status(401).json({ message: 'Credenciales incorrectas', user: null });
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ message: 'Usuario no encontrado', user: null });
+    }
+    if (user.password !== password) {
+      return res.status(401).json({ message: 'Contraseña incorrecta', user: null });
+    }
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.status(200).json({ message: 'Acceso concedido', user: userObj });
+  } catch (err) {
+    res.status(500).json({ message: 'Error en el servidor', user: null });
   }
-  res.status(200).json({ message: 'Acceso concedido', user });
 });
 
 // Update user configuration endpoint
-app.post('/api/user/config', (req, res) => {
+app.post('/api/user/config', async (req, res) => {
   const { email, workExperience, targetSector, targetRole } = req.body;
-  
-  const user = users.find(u => u.email === email);
-  if (!user) {
-    return res.status(404).json({ message: 'Usuario no encontrado', success: false });
+  try {
+    const user = await User.findOneAndUpdate(
+      { email },
+      { workExperience, targetSector, targetRole, configCompleted: true },
+      { new: true }
+    );
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado', success: false });
+    }
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.status(200).json({ 
+      message: 'Configuración guardada exitosamente', 
+      user: userObj,
+      success: true 
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error en el servidor', success: false });
   }
-  
-  user.workExperience = workExperience;
-  user.targetSector = targetSector;
-  user.targetRole = targetRole;
-  user.configCompleted = true;
-  
-  res.status(200).json({ 
-    message: 'Configuración guardada exitosamente', 
-    user,
-    success: true 
-  });
 });
 
 app.listen(PORT, () => {
