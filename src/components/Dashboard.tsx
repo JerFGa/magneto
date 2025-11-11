@@ -165,6 +165,7 @@ function HomeView({ user, onEditProfile, onUpdateUser }: {
         category="general"
         onComplete={handleLevelInterviewComplete}
         onCancel={() => setShowLevelInterview(false)}
+        userProfile={user}
       />
     );
   }
@@ -391,6 +392,7 @@ function TrainingView({ user }: { user: User }) {
         category={simulatorCategory}
         onComplete={handleInterviewComplete}
         onCancel={() => setShowSimulator(false)}
+        userProfile={user}
       />
     );
   }

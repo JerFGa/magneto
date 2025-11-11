@@ -1,10 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const { Ollama } = require('ollama');
 require('dotenv').config();
 
 const app = express();
 const PORT = 3001;
+
+// Inicializar Ollama
+const ollama = new Ollama({ host: 'http://localhost:11434' });
 
 // Usa la variable de entorno para la contraseña
 const MONGO_URI = `mongodb+srv://admin:${process.env.DB_PASSWORD}@cluster0.oegtrdy.mongodb.net/jobsy?retryWrites=true&w=majority`;
@@ -206,6 +210,79 @@ app.post('/api/user/profile', async (req, res) => {
   } catch (err) {
     console.error('Error /api/user/profile:', err);
     return res.status(500).json({ message: 'Error en el servidor' });
+  }
+});
+
+// Endpoint para generar preguntas con Ollama
+app.post('/api/generate-question', async (req, res) => {
+  try {
+    const { userProfile, questionNumber, totalQuestions, previousQuestions } = req.body;
+    
+    // Construir el contexto para el prompt
+    const context = userProfile ? `
+Perfil del candidato:
+- Experiencia: ${userProfile.workExperience || 'No especificada'}
+- Sector objetivo: ${userProfile.targetSector || 'No especificado'}
+- Puesto objetivo: ${userProfile.targetRole || 'No especificado'}
+- Fortalezas: ${userProfile.strengths?.join(', ') || 'No especificadas'}
+- Áreas de mejora: ${userProfile.improvements?.join(', ') || 'No especificadas'}
+    `.trim() : '';
+
+    const previousQuestionsText = previousQuestions?.length 
+      ? `\n\nPreguntas anteriores (evita repetir temas similares):\n${previousQuestions.join('\n')}`
+      : '';
+
+    const prompt = `Eres un experto entrevistador de recursos humanos. Genera UNA pregunta de entrevista laboral relevante y profesional.
+
+${context}
+
+${previousQuestionsText}
+
+Esta es la pregunta ${questionNumber} de ${totalQuestions} en la entrevista.
+
+INSTRUCCIONES:
+- Genera SOLO la pregunta, sin numeración ni formato adicional
+- La pregunta debe ser clara, profesional y relevante para el perfil
+- Debe ser apropiada para una entrevista real
+- No incluyas múltiples preguntas
+- No agregues explicaciones ni contexto adicional
+
+Pregunta:`;
+
+    // Llamar a Ollama con Llama 3.1
+    const response = await ollama.chat({
+      model: 'llama3.1:8b',
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+    });
+
+    const question = response.message.content.trim();
+
+    res.status(200).json({ 
+      success: true,
+      question: question,
+      questionNumber: questionNumber
+    });
+
+  } catch (err) {
+    console.error('Error al generar pregunta con Ollama:', err);
+    
+    // Si Ollama no está disponible, devolver una pregunta de respaldo
+    const fallbackQuestions = [
+      '¿Puedes contarme sobre tu experiencia profesional más relevante?',
+      '¿Cuáles son tus principales fortalezas y cómo las has aplicado en tu trabajo?',
+      '¿Por qué estás interesado en este puesto y esta empresa?',
+      '¿Puedes describir un desafío que hayas enfrentado y cómo lo resolviste?',
+      '¿Dónde te ves en 5 años en tu carrera profesional?'
+    ];
+    
+    res.status(200).json({ 
+      success: true,
+      question: fallbackQuestions[(req.body.questionNumber - 1) % fallbackQuestions.length],
+      questionNumber: req.body.questionNumber,
+      fallback: true,
+      error: 'Ollama no disponible, usando pregunta de respaldo'
+    });
   }
 });
 
