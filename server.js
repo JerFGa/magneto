@@ -32,6 +32,16 @@ const userSchema = new mongoose.Schema({
   targetRole: String,
   configCompleted: { type: Boolean, default: false }
 });
+
+// Después de definir userSchema, añade nuevos campos:
+userSchema.add({
+  strengths: { type: [String], default: [] },
+  improvements: { type: [String], default: [] },
+  notes: { type: String, default: '' },
+});
+// Opcional: timestamps en el esquema (si aún no lo tienes)
+// userSchema.set('timestamps', true);
+
 const User = mongoose.model('User', userSchema);
 
 // Ping endpoint
@@ -78,6 +88,39 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Helpers para clasificar y sanear entradas
+function sanitizeList(list) {
+  return [...new Set(
+    (list || [])
+      .map((s) => String(s).trim())
+      .filter((s) => s.length > 0)
+  )];
+}
+function classifyPoints(summaryText) {
+  const negatives = [
+    'mejorar', 'falta', 'débil', 'debilidad', 'necesito', 'por mejorar',
+    'aprendiendo', 'pendiente', 'no domino', 'quiero mejorar'
+  ];
+  const items = String(summaryText || '')
+    .split(/\n|,|;|•|-|\u2022/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const strengths = [];
+  const improvements = [];
+
+  for (const it of items) {
+    const lower = it.toLowerCase();
+    const isNegative = negatives.some((n) => lower.includes(n));
+    if (isNegative) improvements.push(it);
+    else strengths.push(it);
+  }
+  return {
+    strengths: sanitizeList(strengths),
+    improvements: sanitizeList(improvements),
+  };
+}
+
 // Update user configuration endpoint
 app.post('/api/user/config', async (req, res) => {
   const { email, workExperience, targetSector, targetRole } = req.body;
@@ -99,6 +142,70 @@ app.post('/api/user/config', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: 'Error en el servidor', success: false });
+  }
+});
+
+// Nuevo endpoint para guardar perfil + clasificación
+app.post('/api/user/profile', async (req, res) => {
+  try {
+    const {
+      email,
+      workExperience,
+      targetSector,
+      targetRole,
+      summaryText,     // texto libre del formulario (opcional)
+      strengths,       // array opcional
+      improvements,    // array opcional
+    } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email es requerido' });
+    }
+
+    let sets = {};
+    if (typeof workExperience === 'string') sets.workExperience = workExperience;
+    if (typeof targetSector === 'string') sets.targetSector = targetSector;
+    if (typeof targetRole === 'string') sets.targetRole = targetRole;
+
+    // Si vienen arrays directos, se usan; si no, se clasifican desde summaryText
+    let finalStrengths = Array.isArray(strengths) ? strengths : [];
+    let finalImprovements = Array.isArray(improvements) ? improvements : [];
+
+    if ((!finalStrengths.length && !finalImprovements.length) && summaryText) {
+      const cls = classifyPoints(summaryText);
+      finalStrengths = cls.strengths;
+      finalImprovements = cls.improvements;
+      sets.notes = summaryText;
+    }
+
+    if (finalStrengths.length) sets.strengths = sanitizeList(finalStrengths);
+    if (finalImprovements.length) sets.improvements = sanitizeList(finalImprovements);
+
+    // marca configuración como completa si hay datos clave
+    if (sets.workExperience || sets.targetSector || sets.targetRole || sets.strengths || sets.improvements) {
+      sets.configCompleted = true;
+    }
+
+    const user = await User.findOneAndUpdate(
+      { email },
+      { $set: sets },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    return res.status(200).json({
+      message: 'Perfil actualizado correctamente',
+      user: userObj,
+    });
+  } catch (err) {
+    console.error('Error /api/user/profile:', err);
+    return res.status(500).json({ message: 'Error en el servidor' });
   }
 });
 
