@@ -10,16 +10,13 @@ const PORT = 3001;
 // Inicializar Ollama
 const ollama = new Ollama({ host: 'http://localhost:11434' });
 
-// Usa la variable de entorno para la contraseña
-const MONGO_URI = `mongodb+srv://admin:${process.env.DB_PASSWORD}@cluster0.oegtrdy.mongodb.net/jobsy?retryWrites=true&w=majority`;
-
 app.use(cors());
 app.use(express.json());
 
-// Conexión a MongoDB Atlas
+// Conexión a MongoDB Local
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ Conectado a MongoDB'))
+  .then(() => console.log('✅ Conectado a MongoDB Local'))
   .catch(err => console.error('❌ Error de conexión a MongoDB:', err));
 
 // Esquema y modelo de usuario
