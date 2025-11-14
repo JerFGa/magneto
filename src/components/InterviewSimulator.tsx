@@ -115,7 +115,20 @@ export function InterviewSimulator({ category, onComplete, onCancel, userProfile
     } else {
       // Interview complete - generate mock score for demonstration
       const mockScore = Math.floor(Math.random() * 30) + 70; // Random score between 70-100
-      onComplete(mockScore, answers);
+      
+      // Add final answer if not empty
+      const finalAnswers = currentAnswer.trim() 
+        ? [...answers, { 
+            questionId: `question-${currentQuestionIndex + 1}`, 
+            answer: currentAnswer 
+          }]
+        : answers;
+      
+      console.log('🎯 Entrevista completada!');
+      console.log('   📊 Score:', mockScore);
+      console.log('   📝 Total respuestas:', finalAnswers.length);
+      
+      onComplete(mockScore, finalAnswers);
     }
   };
 

@@ -22,6 +22,8 @@ export interface User {
   level: number;
   /** Total experience points earned */
   totalXP: number;
+  /** Current XP in level */
+  xp?: number;
   /** Array of earned and available badges */
   badges: Badge[];
   /** Array of current weekly missions/challenges */

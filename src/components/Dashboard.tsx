@@ -37,6 +37,50 @@ interface DashboardProps {
 export function Dashboard({ user, currentView, onViewChange, onLogout, onUpdateUser }: DashboardProps) {
   const [showProfileEdit, setShowProfileEdit] = useState(false);
 
+  /**
+   * Updates user XP by calling backend endpoint
+   * @param xpGained - Amount of XP to add
+   */
+  const addUserXP = async (xpGained: number) => {
+    console.log('🎯 addUserXP llamado con:', xpGained, 'XP');
+    console.log('📧 Email del usuario:', user.email);
+    
+    try {
+      console.log('📤 Enviando petición al backend...');
+      const response = await fetch('http://localhost:3001/api/user/add-xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          xpGained: xpGained
+        })
+      });
+
+      console.log('📥 Respuesta recibida, status:', response.status);
+      const data = await response.json();
+      console.log('📊 Datos:', data);
+      
+      if (data.success) {
+        console.log(`✅ XP actualizado: +${xpGained} XP (Total: ${data.newTotalXP}, Nivel: ${data.newLevel})`);
+        
+        // Update local user state
+        onUpdateUser({
+          totalXP: data.newTotalXP,
+          xp: data.user.xp,
+          level: data.newLevel
+        });
+        
+        return true;
+      } else {
+        console.error('❌ Error al actualizar XP:', data.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('💥 Error al conectar con el servidor:', error);
+      return false;
+    }
+  };
+
   if (showProfileEdit) {
     return (
       <ProfileEdit
@@ -75,8 +119,8 @@ export function Dashboard({ user, currentView, onViewChange, onLogout, onUpdateU
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentView === 'home' && <HomeView user={user} onEditProfile={() => setShowProfileEdit(true)} onUpdateUser={onUpdateUser} />}
-        {currentView === 'training' && <TrainingView user={user} />}
+        {currentView === 'home' && <HomeView user={user} onEditProfile={() => setShowProfileEdit(true)} onUpdateUser={onUpdateUser} onAddXP={addUserXP} />}
+        {currentView === 'training' && <TrainingView user={user} onAddXP={addUserXP} />}
         {currentView === 'stats' && <StatsView user={user} />}
       </div>
 
@@ -127,10 +171,11 @@ export function Dashboard({ user, currentView, onViewChange, onLogout, onUpdateU
  * @param {Function} props.onUpdateUser - Function to update user data
  * @returns {JSX.Element} Rendered home view
  */
-function HomeView({ user, onEditProfile, onUpdateUser }: { 
+function HomeView({ user, onEditProfile, onUpdateUser, onAddXP }: { 
   user: User; 
   onEditProfile: () => void;
   onUpdateUser: (updates: Partial<User>) => void;
+  onAddXP: (xpGained: number) => Promise<boolean>;
 }) {
   const [showLevelInterview, setShowLevelInterview] = useState(false);
   const currentLevel = user.level || 1;
@@ -142,20 +187,17 @@ function HomeView({ user, onEditProfile, onUpdateUser }: {
    * @param {number} score - Interview score achieved
    * @param {any[]} answers - User's answers (not used in current implementation)
    */
-  const handleLevelInterviewComplete = (score: number, answers: any[]) => {
+  const handleLevelInterviewComplete = async (score: number, answers: any[]) => {
+    console.log('🎬 handleLevelInterviewComplete llamado');
+    console.log('   📊 Score:', score);
+    
     const xpGained = score;
-    const newTotalXP = user.totalXP + xpGained;
-    let newLevel = user.level;
+    console.log('   ⭐ XP a otorgar:', xpGained);
     
-    // Simple level progression: every 500 XP = next level
-    if (newTotalXP >= (user.level + 1) * 500) {
-      newLevel = user.level + 1;
-    }
+    // Call backend to update XP
+    console.log('   📤 Llamando a onAddXP...');
+    await onAddXP(xpGained);
     
-    onUpdateUser({ 
-      totalXP: newTotalXP, 
-      level: newLevel 
-    });
     setShowLevelInterview(false);
   };
 
@@ -355,7 +397,7 @@ function HomeView({ user, onEditProfile, onUpdateUser }: {
  * @param {User} props.user - Current user data
  * @returns {JSX.Element} Rendered training view
  */
-function TrainingView({ user }: { user: User }) {
+function TrainingView({ user, onAddXP }: { user: User; onAddXP: (xpGained: number) => Promise<boolean> }) {
   const [selectedSkill, setSelectedSkill] = useState('');
   const [activeSection, setActiveSection] = useState<'favorites' | 'history' | 'main'>('main');
   const [showSimulator, setShowSimulator] = useState(false);
@@ -380,8 +422,20 @@ function TrainingView({ user }: { user: User }) {
    * @param {number} score - Interview score achieved
    * @param {any[]} answers - User's answers
    */
-  const handleInterviewComplete = (score: number, answers: any[]) => {
-    console.log('Interview completed with score:', score);
+  const handleInterviewComplete = async (score: number, answers: any[]) => {
+    console.log('🎬 handleInterviewComplete llamado');
+    console.log('   📊 Score:', score);
+    console.log('   📝 Respuestas:', answers.length);
+    
+    // Calculate XP based on score
+    const xpGained = Math.floor(score / 2) + 20; // 20-70 XP based on score
+    console.log('   ⭐ XP a otorgar:', xpGained);
+    
+    // Update XP in backend
+    console.log('   📤 Llamando a onAddXP...');
+    const success = await onAddXP(xpGained);
+    console.log('   ✅ Resultado:', success ? 'Éxito' : 'Fallo');
+    
     setShowSimulator(false);
     setActiveSection('history');
   };

@@ -26,6 +26,7 @@ const userSchema = new mongoose.Schema({
   password: String,
   level: { type: Number, default: 1 },
   totalXP: { type: Number, default: 0 },
+  xp: { type: Number, default: 0 }, // XP actual en el nivel
   badges: { type: Array, default: [] },
   weeklyMissions: { type: Array, default: [] },
   workExperience: String,
@@ -279,6 +280,65 @@ Pregunta:`;
       questionNumber: req.body.questionNumber,
       fallback: true,
       error: 'Ollama no disponible, usando pregunta de respaldo'
+    });
+  }
+});
+
+// Endpoint para actualizar XP del usuario
+app.post('/api/user/add-xp', async (req, res) => {
+  try {
+    const { email, xpGained } = req.body;
+
+    if (!email || typeof xpGained !== 'number') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email y xpGained son requeridos' 
+      });
+    }
+
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Usuario no encontrado' 
+      });
+    }
+
+    // Actualizar XP
+    const newTotalXP = (user.totalXP || 0) + xpGained;
+    const newXP = (user.xp || 0) + xpGained;
+    let newLevel = user.level || 1;
+
+    // Calcular nivel: cada 500 XP = 1 nivel
+    newLevel = Math.floor(newTotalXP / 500) + 1;
+
+    // Actualizar usuario
+    user.totalXP = newTotalXP;
+    user.xp = newXP;
+    user.level = newLevel;
+    await user.save();
+
+    console.log(`✅ XP actualizado para ${email}: +${xpGained} XP (Total: ${newTotalXP}, Nivel: ${newLevel})`);
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    res.status(200).json({
+      success: true,
+      message: 'XP actualizado correctamente',
+      user: userObj,
+      xpGained,
+      newTotalXP,
+      newLevel
+    });
+
+  } catch (error) {
+    console.error('❌ Error al actualizar XP:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error al actualizar XP',
+      error: error.message 
     });
   }
 });
